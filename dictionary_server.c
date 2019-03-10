@@ -170,6 +170,7 @@ int main() {
 		pthread_create(&tid, NULL, thread, (void *)&args);
 	}
 
+	close(listen_fd);
 	free_trie(trie);
 	pthread_mutex_destroy(&cur_size_mutex);
 	printf("Stopping server..\n");
