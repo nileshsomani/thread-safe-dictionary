@@ -7,7 +7,10 @@
 #include "ipc_socket.h"
 
 static int cur_size = 0;
-pthread_mutex_t cur_size_mutex;
+
+static pthread_mutex_t cur_size_mutex;
+static pthread_mutex_t trie_mutex;
+
 static struct Node *trie;
 
 static int insert(char *word) {
@@ -15,7 +18,7 @@ static int insert(char *word) {
 	struct Node *node = NULL;
 	struct Node *iter = trie;
 
-	pthread_mutex_lock(&trie->lock);
+	pthread_mutex_lock(&trie_mutex);
 	while (c = *word++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
@@ -33,14 +36,14 @@ static int insert(char *word) {
 			}
 			else {
 				pthread_mutex_unlock(&cur_size_mutex);
-				pthread_mutex_unlock(&trie->lock);
+				pthread_mutex_unlock(&trie_mutex);
 				return FAILURE;
 
 			}
 		}
 	}
 	iter->is_end = 1;
-	pthread_mutex_unlock(&trie->lock);
+	pthread_mutex_unlock(&trie_mutex);
 	return SUCCESS;
 }
 
@@ -48,7 +51,7 @@ static int search(char *word) {
 	char c, i;
 	struct Node *iter = trie;
 
-	pthread_mutex_lock(&trie->lock);
+	pthread_mutex_lock(&trie_mutex);
 	while (c = *word++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
@@ -56,15 +59,15 @@ static int search(char *word) {
 			continue;
 		}
 		else {
-			pthread_mutex_unlock(&trie->lock);
+			pthread_mutex_unlock(&trie_mutex);
 			return FAILURE;
 		}
 	}
 	if (iter->is_end == 1) {
-		pthread_mutex_unlock(&trie->lock);
+		pthread_mutex_unlock(&trie_mutex);
 		return SUCCESS;
 	}
-	pthread_mutex_unlock(&trie->lock);
+	pthread_mutex_unlock(&trie_mutex);
 	return FAILURE;
 }
 
@@ -74,7 +77,7 @@ static int del(char *word) {
 	pthread_t tid;
 	char *tmp = word;
 
-	pthread_mutex_lock(&trie->lock);
+	pthread_mutex_lock(&trie_mutex);
 	while (c = *tmp++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
@@ -82,13 +85,13 @@ static int del(char *word) {
 			continue;
 		}
 		else {
-			pthread_mutex_unlock(&trie->lock);
+			pthread_mutex_unlock(&trie_mutex);
 			return SUCCESS;
 		}
 	}
 	// Soft Delete
 	iter->is_end = 0;
-	pthread_mutex_unlock(&trie->lock);
+	pthread_mutex_unlock(&trie_mutex);
 
 	if (has_children(iter) == 0) {
 		tmp = (char *)malloc(sizeof(char) * strlen(word));
@@ -144,7 +147,7 @@ static struct Node *getNode() {
 	for (i=0; i<NO_OF_CHARS; i++) {
 		node->children[i] = NULL;
 	}
-	pthread_mutex_init(&node->lock, NULL);
+	//pthread_mutex_init(&node->lock, NULL);
 	return node;
 }
 
@@ -157,7 +160,7 @@ static void free_trie(struct Node *trie) {
 	for (i=0; i<NO_OF_CHARS; i++) {
 		free_trie(trie->children[i]);
 	}
-	pthread_mutex_destroy(&trie->lock);
+	//pthread_mutex_destroy(&trie->lock);
 	free(trie);
 }
 
@@ -166,9 +169,9 @@ static void *del_thread(void *arg) {
 
 	pthread_detach(pthread_self());
 
-	pthread_mutex_lock(&trie->lock);
+	pthread_mutex_lock(&trie_mutex);
 	recursive_del(trie, word);
-	pthread_mutex_unlock(&trie->lock);
+	pthread_mutex_unlock(&trie_mutex);
 
 	free(arg);
 	return NULL;
@@ -204,6 +207,7 @@ static void *thread(void *arg) {
 }
 
 static void interrupt_handler(int sig) {
+	pthread_mutex_destroy(&trie_mutex);
 	free_trie(trie);
 	pthread_mutex_destroy(&cur_size_mutex);
 	printf("Stopping server..\n");
@@ -222,6 +226,7 @@ int main() {
 		printf("Unable to create socket\n");
 		return -1;
 	}
+	pthread_mutex_init(&trie_mutex, NULL);
 	pthread_mutex_init(&cur_size_mutex, NULL);
 
 	signal(SIGINT, interrupt_handler);
