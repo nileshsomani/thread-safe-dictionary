@@ -1,5 +1,6 @@
 #include "ipc_socket.h"
 
+// This creates a server socket, binds it on a port and starts listening
 int open_listenfd() {
 	int listen_fd, optval=1;
 	struct sockaddr_in serveraddr;
@@ -23,6 +24,7 @@ int open_listenfd() {
 	return listen_fd;
 }
 
+// This creates a client connection with the socket
 int open_clientfd() {
 	int client_fd;
 	struct hostent *hp;
