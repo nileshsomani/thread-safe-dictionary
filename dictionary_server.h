@@ -13,18 +13,13 @@ struct Node {
 	struct Node *children[NO_OF_CHARS];
 };
 
-struct del_arguments {
-	struct Node *trie;
-	char *word;
-};
-
 static struct Node *getNode();
 
-static int insert(struct Node *trie, char *word);
+static int insert(char *word);
 
-static int search(struct Node *trie, char *word);
+static int search(char *word);
 
-static int del(struct Node *trie, char *word);
+static int del(char *word);
 
 static void recursive_del(struct Node *trie, char *word);
 

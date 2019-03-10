@@ -10,7 +10,7 @@ static int cur_size = 0;
 pthread_mutex_t cur_size_mutex;
 static struct Node *trie;
 
-static int insert(struct Node *trie, char *word) {
+static int insert(char *word) {
 	char c, i;
 	struct Node *node = NULL;
 	struct Node *iter = trie;
@@ -44,7 +44,7 @@ static int insert(struct Node *trie, char *word) {
 	return SUCCESS;
 }
 
-static int search(struct Node *trie, char *word) {
+static int search(char *word) {
 	char c, i;
 	struct Node *iter = trie;
 
@@ -68,11 +68,10 @@ static int search(struct Node *trie, char *word) {
 	return FAILURE;
 }
 
-static int del(struct Node *trie, char *word) {
+static int del(char *word) {
 	char c, i;
 	struct Node *iter = trie;
 	pthread_t tid;
-	struct del_arguments *args;
 	char *tmp = word;
 
 	pthread_mutex_lock(&trie->lock);
@@ -92,11 +91,9 @@ static int del(struct Node *trie, char *word) {
 	pthread_mutex_unlock(&trie->lock);
 
 	if (has_children(iter) == 0) {
-		args = (struct del_arguments *)malloc(sizeof(struct del_arguments));
-		args->trie = trie;
-		args->word = (char *)malloc(sizeof(char) * strlen(word));
-		strncpy(args->word, word, strlen(word));
-		pthread_create(&tid, NULL, del_thread, (void *)args);
+		tmp = (char *)malloc(sizeof(char) * strlen(word));
+		strncpy(tmp, word, strlen(word));
+		pthread_create(&tid, NULL, del_thread, (void *)tmp);
 	}
 
 	return SUCCESS;
@@ -165,17 +162,15 @@ static void free_trie(struct Node *trie) {
 }
 
 static void *del_thread(void *arg) {
-	struct del_arguments *args = (struct del_arguments *)arg;
+	char *word = (char *)arg;
 
 	pthread_detach(pthread_self());
 
-	pthread_mutex_lock(&args->trie->lock);
-	recursive_del(args->trie, args->word);
-	pthread_mutex_unlock(&args->trie->lock);
+	pthread_mutex_lock(&trie->lock);
+	recursive_del(trie, word);
+	pthread_mutex_unlock(&trie->lock);
 
-	free(args->word);
-	free(args);
-	args = NULL;
+	free(arg);
 	return NULL;
 }
 
@@ -191,13 +186,13 @@ static void *thread(void *arg) {
 	read(conn_fd, word, 50);
 	printf("Spawning thread for %s [%s]\n", action, word);
 	if (strcmp(action, "--search") == 0) {
-		res = search(trie, word);
+		res = search(word);
 	}
 	else if (strcmp(action, "--insert") == 0) {
-		res = insert(trie, word);
+		res = insert(word);
 	}
 	else if (strcmp(action, "--delete") == 0) {
-		res = del(trie, word);
+		res = del(word);
 	}
 	if (res == SUCCESS)
 		send(conn_fd, "SUCCESS", 7, 0);

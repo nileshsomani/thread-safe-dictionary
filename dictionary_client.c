@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
 		send(client_fd, argv[1], 8, 0);
 		send(client_fd, argv[2], word_len, 0);
 		read(client_fd, result, 10);
-		printf("Action[%s] result : %s\n", (argv[1] + 2), result);
+		printf("Action[%s] for Word[%s] : %s\n", (argv[1] + 2), argv[2], result);
 
 	}
 	else {
