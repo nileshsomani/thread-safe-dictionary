@@ -6,15 +6,16 @@
 #include "dictionary_server.h"
 #include "ipc_socket.h"
 
-static volatile int keepRunning = 1;
 static int cur_size = 0;
 pthread_mutex_t cur_size_mutex;
+static struct Node *trie;
 
 static int insert(struct Node *trie, char *word) {
 	char c, i;
 	struct Node *node = NULL;
 	struct Node *iter = trie;
 
+	pthread_mutex_lock(&trie->lock);
 	while (c = *word++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
@@ -25,21 +26,21 @@ static int insert(struct Node *trie, char *word) {
 			pthread_mutex_lock(&cur_size_mutex);
 			if (cur_size < MAX_SIZE) {
 				node = getNode();
-				pthread_mutex_lock(&iter->lock);
 				iter->children[i] = node;
-				pthread_mutex_unlock(&iter->lock);
 				cur_size += 1;
+				pthread_mutex_unlock(&cur_size_mutex);
 				iter = iter->children[i];
 			}
 			else {
 				pthread_mutex_unlock(&cur_size_mutex);
+				pthread_mutex_unlock(&trie->lock);
 				return FAILURE;
 
 			}
-			pthread_mutex_unlock(&cur_size_mutex);
 		}
 	}
 	iter->is_end = 1;
+	pthread_mutex_unlock(&trie->lock);
 	return SUCCESS;
 }
 
@@ -47,6 +48,7 @@ static int search(struct Node *trie, char *word) {
 	char c, i;
 	struct Node *iter = trie;
 
+	pthread_mutex_lock(&trie->lock);
 	while (c = *word++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
@@ -54,34 +56,86 @@ static int search(struct Node *trie, char *word) {
 			continue;
 		}
 		else {
+			pthread_mutex_unlock(&trie->lock);
 			return FAILURE;
 		}
 	}
-	if (iter->is_end == 1)
+	if (iter->is_end == 1) {
+		pthread_mutex_unlock(&trie->lock);
 		return SUCCESS;
+	}
+	pthread_mutex_unlock(&trie->lock);
 	return FAILURE;
 }
 
 static int del(struct Node *trie, char *word) {
 	char c, i;
 	struct Node *iter = trie;
+	pthread_t tid;
+	struct del_arguments *args;
+	char *tmp = word;
 
-	while (c = *word++) {
+	pthread_mutex_lock(&trie->lock);
+	while (c = *tmp++) {
 		i = INDEX(c);
 		if (iter->children[i]) {
 			iter = iter->children[i];
 			continue;
 		}
 		else {
+			pthread_mutex_unlock(&trie->lock);
 			return SUCCESS;
 		}
 	}
 	// Soft Delete
-	// TODO recursive delete is also needed
-	pthread_mutex_lock(&iter->lock);
 	iter->is_end = 0;
-	pthread_mutex_unlock(&iter->lock);
+	pthread_mutex_unlock(&trie->lock);
+
+	if (has_children(iter) == 0) {
+		args = (struct del_arguments *)malloc(sizeof(struct del_arguments));
+		args->trie = trie;
+		args->word = (char *)malloc(sizeof(char) * strlen(word));
+		strncpy(args->word, word, strlen(word));
+		pthread_create(&tid, NULL, del_thread, (void *)args);
+	}
+
 	return SUCCESS;
+}
+
+static int has_children(struct Node *trie) {
+	int i;
+
+	for (i=0; i<NO_OF_CHARS; i++) {
+		if (trie->children[i] != NULL)
+			return 1;
+	}
+
+	return 0;
+}
+
+static void recursive_del(struct Node *trie, char *word) {
+	char c;
+	int i;
+	struct Node *iter;
+
+	if (c = *word++) {
+		i = INDEX(c);
+		if (trie->children[i]) {
+			iter = trie->children[i];
+			recursive_del(iter, word);
+		}
+		else
+			return;
+	}
+	if (!c)
+		return;
+	if (trie->children[i]->is_end == 0 && has_children(trie->children[i]) == 0) {
+		free_trie(trie->children[i]);
+		trie->children[i] = NULL;
+		pthread_mutex_lock(&cur_size_mutex);
+		cur_size -= 1;
+		pthread_mutex_unlock(&cur_size_mutex);
+	}
 }
 
 static struct Node *getNode() {
@@ -110,18 +164,32 @@ static void free_trie(struct Node *trie) {
 	free(trie);
 }
 
-static void *thread(void *arg) {
-	int conn_fd = *(((struct Arguments *)arg)->conn_fd);
-	struct Node *trie = ((struct Arguments *)arg)->trie;
-	char action[10] = {0};
-	char word[WORD_MAX] = {0};
-	int res;
+static void *del_thread(void *arg) {
+	struct del_arguments *args = (struct del_arguments *)arg;
 
 	pthread_detach(pthread_self());
-	free(((struct Arguments *)arg)->conn_fd);
+
+	pthread_mutex_lock(&args->trie->lock);
+	recursive_del(args->trie, args->word);
+	pthread_mutex_unlock(&args->trie->lock);
+
+	free(args->word);
+	free(args);
+	args = NULL;
+	return NULL;
+}
+
+static void *thread(void *arg) {
+	int conn_fd = *(int *)arg;
+	free(arg);
+	char action[10] = {0};
+	char word[WORD_MAX] = {0};
+	int res = 0;
+
+	pthread_detach(pthread_self());
 	read(conn_fd, action, 8);
 	read(conn_fd, word, 50);
-
+	printf("Spawning thread for %s [%s]\n", action, word);
 	if (strcmp(action, "--search") == 0) {
 		res = search(trie, word);
 	}
@@ -141,17 +209,18 @@ static void *thread(void *arg) {
 }
 
 static void interrupt_handler(int sig) {
-	keepRunning = 0;
+	free_trie(trie);
+	pthread_mutex_destroy(&cur_size_mutex);
+	printf("Stopping server..\n");
+	exit(0);
 }
 
 int main() {
-	int listen_fd, *conn_fd;
+	int listen_fd, *conn_fd=NULL;
 	pthread_t tid;
 	struct sockaddr_in clientaddr;
 	socklen_t clientlen = sizeof(struct sockaddr_in);
-	struct Node *trie = getNode();
-	struct Arguments args;
-	args.trie = trie;
+	trie = getNode();
 
 	printf("Starting server..\n");
 	if ((listen_fd = open_listenfd()) < 0) {
@@ -162,23 +231,16 @@ int main() {
 
 	signal(SIGINT, interrupt_handler);
 
-	while(keepRunning) {
+	while(1) {
 		conn_fd = (int *)malloc(sizeof(int));
 		if ((*conn_fd = accept(listen_fd, (struct sockaddr *)&clientaddr, &clientlen)) < 0) {
-			if (*conn_fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
-				sleep(1);
-			else
-				return -1;
+			return -1;
 		}
 		else {
-			args.conn_fd = conn_fd;
-			pthread_create(&tid, NULL, thread, (void *)&args);
+			pthread_create(&tid, NULL, thread, (void *)conn_fd);
 		}
 	}
 
 	close(listen_fd);
-	free_trie(trie);
-	pthread_mutex_destroy(&cur_size_mutex);
-	printf("Stopping server..\n");
 	return 0;
 }

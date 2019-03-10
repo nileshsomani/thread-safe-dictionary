@@ -13,9 +13,9 @@ struct Node {
 	struct Node *children[NO_OF_CHARS];
 };
 
-struct Arguments {
+struct del_arguments {
 	struct Node *trie;
-	int *conn_fd;
+	char *word;
 };
 
 static struct Node *getNode();
@@ -26,6 +26,12 @@ static int search(struct Node *trie, char *word);
 
 static int del(struct Node *trie, char *word);
 
+static void recursive_del(struct Node *trie, char *word);
+
 static void free_trie(struct Node *trie);
 
 static void *thread(void *args);
+
+static void *del_thread(void *args);
+
+static int has_children(struct Node *trie);
