@@ -6,28 +6,43 @@
 #include "dictionary_server.h"
 #include "ipc_socket.h"
 
+// Current number of allocated trie nodes
 static int cur_size = 0;
 
+// Mutex lock for updating/accessing cur_size variable
 static pthread_mutex_t cur_size_mutex;
+
+// Mutex lock for updating/accessing dictioanry
 static pthread_mutex_t trie_mutex;
 
+// Root node of the dictionary
 static struct Node *trie;
 
+/*
+ * This method is used to insert new word in
+ * the dictionary
+*/
 static int insert(char *word) {
 	char c, i;
 	struct Node *node = NULL;
 	struct Node *iter = trie;
 
+	// acquire global lock
 	pthread_mutex_lock(&trie_mutex);
+
+	// iterate through characters
 	while (c = *word++) {
 		i = INDEX(c);
+		// if already present continue
 		if (iter->children[i]) {
 			iter = iter->children[i];
 			continue;
 		}
 		else {
+			// if not present, check memory footprint
 			pthread_mutex_lock(&cur_size_mutex);
 			if (cur_size < MAX_SIZE) {
+				// create new node and attach
 				node = getNode();
 				iter->children[i] = node;
 				cur_size += 1;
@@ -35,6 +50,7 @@ static int insert(char *word) {
 				iter = iter->children[i];
 			}
 			else {
+				// release locks
 				pthread_mutex_unlock(&cur_size_mutex);
 				pthread_mutex_unlock(&trie_mutex);
 				return FAILURE;
@@ -42,57 +58,83 @@ static int insert(char *word) {
 			}
 		}
 	}
+	// mark last node as end of word
 	iter->is_end = 1;
+	// release global lock
 	pthread_mutex_unlock(&trie_mutex);
 	return SUCCESS;
 }
 
+/*
+ * This method is used to search the word in
+ * the dictionary
+*/
 static int search(char *word) {
 	char c, i;
 	struct Node *iter = trie;
 
+	// acquire global lock
 	pthread_mutex_lock(&trie_mutex);
+
+	// iterate through characters
 	while (c = *word++) {
 		i = INDEX(c);
+		// if present, continue
 		if (iter->children[i]) {
 			iter = iter->children[i];
 			continue;
 		}
 		else {
+			// word not found. release lock and return
 			pthread_mutex_unlock(&trie_mutex);
 			return FAILURE;
 		}
 	}
+
+	// release lock
+	pthread_mutex_unlock(&trie_mutex);
+
+	// after complete iteration check if last node is marked end of word
 	if (iter->is_end == 1) {
-		pthread_mutex_unlock(&trie_mutex);
 		return SUCCESS;
 	}
-	pthread_mutex_unlock(&trie_mutex);
 	return FAILURE;
 }
 
+/*
+ * This method is used to soft delete word in
+ * the dictionary
+*/
 static int del(char *word) {
 	char c, i;
 	struct Node *iter = trie;
 	pthread_t tid;
 	char *tmp = word;
 
+	// acquire global lock
 	pthread_mutex_lock(&trie_mutex);
+
+	// iterate through characters
 	while (c = *tmp++) {
 		i = INDEX(c);
+		// if already present, continue
 		if (iter->children[i]) {
 			iter = iter->children[i];
 			continue;
 		}
 		else {
+			// word does not exist to delete
 			pthread_mutex_unlock(&trie_mutex);
 			return SUCCESS;
 		}
 	}
 	// Soft Delete
 	iter->is_end = 0;
+	// release lock
 	pthread_mutex_unlock(&trie_mutex);
 
+	// if last node has no children, spawn a thread for
+	// recursive delete of nodes
 	if (has_children(iter) == 0) {
 		tmp = (char *)malloc(sizeof(char) * strlen(word));
 		strncpy(tmp, word, strlen(word));
@@ -102,6 +144,10 @@ static int del(char *word) {
 	return SUCCESS;
 }
 
+/*
+ * This method check is the current node has any
+ * child alphabets
+*/
 static int has_children(struct Node *trie) {
 	int i;
 
@@ -113,11 +159,16 @@ static int has_children(struct Node *trie) {
 	return 0;
 }
 
+/*
+ * This method is used to delete word from
+ * the dictionary
+*/
 static void recursive_del(struct Node *trie, char *word) {
 	char c;
 	int i;
 	struct Node *iter;
 
+	// recursive iteration through word
 	if (c = *word++) {
 		i = INDEX(c);
 		if (trie->children[i]) {
@@ -129,6 +180,8 @@ static void recursive_del(struct Node *trie, char *word) {
 	}
 	if (!c)
 		return;
+
+	// start freeing up memory in recursive manner and update children
 	if (trie->children[i]->is_end == 0 && has_children(trie->children[i]) == 0) {
 		free_trie(trie->children[i]);
 		trie->children[i] = NULL;
@@ -138,6 +191,11 @@ static void recursive_del(struct Node *trie, char *word) {
 	}
 }
 
+/*
+ * This method creates a new node of trie DS
+ * intiliazes the is_end with false and all the
+ * children pointers with NULL
+*/
 static struct Node *getNode() {
 	int i;
 
@@ -151,6 +209,9 @@ static struct Node *getNode() {
 	return node;
 }
 
+/*
+ * This method is used to free up the dictionary recursively
+*/
 static void free_trie(struct Node *trie) {
 	int i;
 
@@ -164,6 +225,10 @@ static void free_trie(struct Node *trie) {
 	free(trie);
 }
 
+/*
+ * This method is used to spawn a worker thread to hard
+ * delete word from the dictionary once soft delete is done
+*/
 static void *del_thread(void *arg) {
 	char *word = (char *)arg;
 
@@ -177,6 +242,10 @@ static void *del_thread(void *arg) {
 	return NULL;
 }
 
+/*
+ * This method spawns a new worker thread for operation
+ * on the dictionary
+*/
 static void *thread(void *arg) {
 	int conn_fd = *(int *)arg;
 	free(arg);
@@ -185,9 +254,15 @@ static void *thread(void *arg) {
 	int res = 0;
 
 	pthread_detach(pthread_self());
+	// read action from client
 	read(conn_fd, action, 8);
+
+	// read word from client
 	read(conn_fd, word, 50);
+
 	printf("Spawning thread for %s [%s]\n", action, word);
+
+	// perform action based on user provided keyword
 	if (strcmp(action, "--search") == 0) {
 		res = search(word);
 	}
@@ -206,6 +281,10 @@ static void *thread(void *arg) {
 	return NULL;
 }
 
+/*
+* Interrupt handler to capture Ctrl-C and free up dictionary
+* and destroy locks before stopping dictionary service
+*/
 static void interrupt_handler(int sig) {
 	pthread_mutex_destroy(&trie_mutex);
 	free_trie(trie);
@@ -222,15 +301,21 @@ int main() {
 	trie = getNode();
 
 	printf("Starting server..\n");
+
+	// Create a dictionary service that listens on socket
 	if ((listen_fd = open_listenfd()) < 0) {
 		printf("Unable to create socket\n");
 		return -1;
 	}
+
+	// init global locks
 	pthread_mutex_init(&trie_mutex, NULL);
 	pthread_mutex_init(&cur_size_mutex, NULL);
 
+	// init interrupt handler
 	signal(SIGINT, interrupt_handler);
 
+	// start accept connections and spawn worker threads for each new connection
 	while(1) {
 		conn_fd = (int *)malloc(sizeof(int));
 		if ((*conn_fd = accept(listen_fd, (struct sockaddr *)&clientaddr, &clientlen)) < 0) {
