@@ -170,8 +170,10 @@ int main() {
 			else
 				return -1;
 		}
-		args.conn_fd = conn_fd;
-		pthread_create(&tid, NULL, thread, (void *)&args);
+		else {
+			args.conn_fd = conn_fd;
+			pthread_create(&tid, NULL, thread, (void *)&args);
+		}
 	}
 
 	close(listen_fd);
