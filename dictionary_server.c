@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
@@ -159,13 +160,16 @@ int main() {
 	}
 	pthread_mutex_init(&cur_size_mutex, NULL);
 
-	// TODO This is not enough. Need to make socket connection non-blocking
 	signal(SIGINT, interrupt_handler);
 
 	while(keepRunning) {
 		conn_fd = (int *)malloc(sizeof(int));
-		if ((*conn_fd = accept(listen_fd, (struct sockaddr *)&clientaddr, &clientlen)) < 0)
-			return -1;
+		if ((*conn_fd = accept(listen_fd, (struct sockaddr *)&clientaddr, &clientlen)) < 0) {
+			if (*conn_fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+				sleep(1);
+			else
+				return -1;
+		}
 		args.conn_fd = conn_fd;
 		pthread_create(&tid, NULL, thread, (void *)&args);
 	}

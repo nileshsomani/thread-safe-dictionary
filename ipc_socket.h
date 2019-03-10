@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <fcntl.h>
 
 #define port 8080
 #define host "127.0.0.1"

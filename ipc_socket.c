@@ -7,6 +7,9 @@ int open_listenfd() {
 	if ((listen_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 		return -1;
 
+	if (fcntl(listen_fd, F_SETFL, O_NONBLOCK) < 0)
+		return -1;
+
 	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int)) < 0)
 		return -1;
 
