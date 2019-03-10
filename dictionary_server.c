@@ -20,7 +20,9 @@ static int insert(struct Node *trie, char *word) {
 		}
 		else {
 			node = getNode();
+			pthread_mutex_lock(&iter->lock);
 			iter->children[i] = node;
+			pthread_mutex_unlock(&iter->lock);
 			iter = iter->children[i];
 		}
 	}
@@ -62,7 +64,10 @@ static int del(struct Node *trie, char *word) {
 		}
 	}
 	// Soft Delete
+	// TODO recursive delete is also needed
+	pthread_mutex_lock(&iter->lock);
 	iter->is_end = 0;
+	pthread_mutex_unlock(&iter->lock);
 	return SUCCESS;
 }
 
@@ -75,6 +80,7 @@ static struct Node *getNode() {
 	for (i=0; i<NO_OF_CHARS; i++) {
 		node->children[i] = NULL;
 	}
+	pthread_mutex_init(&node->lock, NULL);
 	return node;
 }
 
@@ -87,6 +93,7 @@ static void free_trie(struct Node *trie) {
 	for (i=0; i<NO_OF_CHARS; i++) {
 		free_trie(trie->children[i]);
 	}
+	pthread_mutex_destroy(&trie->lock);
 	free(trie);
 }
 
@@ -100,8 +107,6 @@ static void *thread(void *arg) {
 	// Read and Write to socket
 	read(conn_fd, action, 8);
 	read(conn_fd, word, 50);
-	//printf("Server rec[action] : %s\n", action);
-	//printf("Server rec[word] : %s\n", word);
 	if (strcmp(action, "--search") == 0) {
 		if (search(trie, word) == SUCCESS)
 			send(conn_fd, "SUCCESS", 7, 0);

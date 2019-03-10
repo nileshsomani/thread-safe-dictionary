@@ -6,6 +6,7 @@
 #define INDEX(c) ((c) < 'Z'? c-'A':c-'a')
 
 struct Node {
+	pthread_mutex_t lock;
 	int is_end;
 	struct Node *children[NO_OF_CHARS];
 };
