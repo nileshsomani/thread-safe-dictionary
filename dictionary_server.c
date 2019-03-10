@@ -6,6 +6,8 @@
 #include "ipc_socket.h"
 
 static volatile int keepRunning = 1;
+static int cur_size = 0;
+pthread_mutex_t cur_size_mutex;
 
 static int insert(struct Node *trie, char *word) {
 	char c, i;
@@ -19,11 +21,21 @@ static int insert(struct Node *trie, char *word) {
 			continue;
 		}
 		else {
-			node = getNode();
-			pthread_mutex_lock(&iter->lock);
-			iter->children[i] = node;
-			pthread_mutex_unlock(&iter->lock);
-			iter = iter->children[i];
+			pthread_mutex_lock(&cur_size_mutex);
+			if (cur_size < MAX_SIZE) {
+				node = getNode();
+				pthread_mutex_lock(&iter->lock);
+				iter->children[i] = node;
+				pthread_mutex_unlock(&iter->lock);
+				cur_size += 1;
+				iter = iter->children[i];
+			}
+			else {
+				pthread_mutex_unlock(&cur_size_mutex);
+				return FAILURE;
+
+			}
+			pthread_mutex_unlock(&cur_size_mutex);
 		}
 	}
 	iter->is_end = 1;
@@ -102,29 +114,26 @@ static void *thread(void *arg) {
 	struct Node *trie = ((struct Arguments *)arg)->trie;
 	char action[10] = {0};
 	char word[50] = {0};
+	int res;
+
 	pthread_detach(pthread_self());
 	free(((struct Arguments *)arg)->conn_fd);
-	// Read and Write to socket
 	read(conn_fd, action, 8);
 	read(conn_fd, word, 50);
+
 	if (strcmp(action, "--search") == 0) {
-		if (search(trie, word) == SUCCESS)
-			send(conn_fd, "SUCCESS", 7, 0);
-		else
-			send(conn_fd, "FAILURE", 7, 0);
+		res = search(trie, word);
 	}
 	else if (strcmp(action, "--insert") == 0) {
-		if (insert(trie, word) == SUCCESS)
-			send(conn_fd, "SUCCESS", 7, 0);
-		else
-			send(conn_fd, "FAILURE", 7, 0);
+		res = insert(trie, word);
 	}
 	else if (strcmp(action, "--delete") == 0) {
-		if (del(trie, word) == SUCCESS)
-			send(conn_fd, "SUCCESS", 7, 0);
-		else
-			send(conn_fd, "FAILURE", 7, 0);
+		res = del(trie, word);
 	}
+	if (res == SUCCESS)
+		send(conn_fd, "SUCCESS", 7, 0);
+	else
+		send(conn_fd, "FAILURE", 7, 0);
 
 	close(conn_fd);
 	return NULL;
@@ -148,6 +157,7 @@ int main() {
 		printf("Unable to create socket\n");
 		return -1;
 	}
+	pthread_mutex_init(&cur_size_mutex, NULL);
 
 	// TODO This is not enough. Need to make socket connection non-blocking
 	signal(SIGINT, interrupt_handler);
@@ -161,6 +171,7 @@ int main() {
 	}
 
 	free_trie(trie);
+	pthread_mutex_destroy(&cur_size_mutex);
 	printf("Stopping server..\n");
 	return 0;
 }

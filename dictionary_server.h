@@ -4,6 +4,7 @@
 #define FAILURE 0
 #define SUCCESS 1
 #define INDEX(c) ((c) < 'Z'? c-'A':c-'a')
+#define MAX_SIZE (1024*1024)/sizeof(struct Node)
 
 struct Node {
 	pthread_mutex_t lock;
