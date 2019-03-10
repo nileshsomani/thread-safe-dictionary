@@ -113,7 +113,7 @@ static void *thread(void *arg) {
 	int conn_fd = *(((struct Arguments *)arg)->conn_fd);
 	struct Node *trie = ((struct Arguments *)arg)->trie;
 	char action[10] = {0};
-	char word[50] = {0};
+	char word[WORD_MAX] = {0};
 	int res;
 
 	pthread_detach(pthread_self());

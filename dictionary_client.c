@@ -3,59 +3,43 @@
 
 #include "ipc_socket.h"
 
-int main() {
-	int client_fd;
-	char buffer[10] = {0};
+#define WORD_MAX 50
+
+int main(int argc, char *argv[]) {
+	int client_fd, word_len;
+	char result[10] = {0};
+
+	if (argc < 3) {
+		printf("Invalid Arguments\n");
+		printf("Usage : dictionary {--insert <word> | --search <word> | --delete <word>}\n");
+		return -1;
+	}
+
+	word_len = strlen(argv[2]);
+
+	if (word_len > WORD_MAX) {
+		printf("Invalid word length. Maximum supported length is 50\n");
+		return -1;
+	}
 
 	if ((client_fd = open_clientfd()) < 0) {
 		printf("Unable to connect to server\n");
 		return -1;
 	}
-	send(client_fd, "--search", 8, 0);
-	send(client_fd, "hello", 5, 0);
-	read(client_fd, buffer, 10);
-	printf("Client rec : %s\n", buffer);
-	close(client_fd);
+	if (strcmp(argv[1], "--search") == 0 || strcmp(argv[1], "--insert") == 0 || strcmp(argv[1], "--delete") == 0) {
+		send(client_fd, argv[1], 8, 0);
+		send(client_fd, argv[2], word_len, 0);
+		read(client_fd, result, 10);
+		printf("Action[%s] result : %s\n", (argv[1] + 2), result);
 
-	if ((client_fd = open_clientfd()) < 0) {
-		printf("Unable to connect to server\n");
+	}
+	else {
+		printf("Invalid Action\n");
+		printf("Usage : dictionary {--insert <word> | --search <word> | --delete <word>}\n");
+		close(client_fd);
 		return -1;
 	}
-	send(client_fd, "--insert", 8, 0);
-	send(client_fd, "hello", 5, 0);
-	read(client_fd, buffer, 10);
-	printf("Client rec : %s\n", buffer);
-	close(client_fd);
 
-	if ((client_fd = open_clientfd()) < 0) {
-		printf("Unable to connect to server\n");
-		return -1;
-	}
-	send(client_fd, "--search", 8, 0);
-	send(client_fd, "hello", 5, 0);
-	read(client_fd, buffer, 10);
-	printf("Client rec : %s\n", buffer);
 	close(client_fd);
-
-	if ((client_fd = open_clientfd()) < 0) {
-		printf("Unable to connect to server\n");
-		return -1;
-	}
-	send(client_fd, "--delete", 8, 0);
-	send(client_fd, "hello", 5, 0);
-	read(client_fd, buffer, 10);
-	printf("Client rec : %s\n", buffer);
-	close(client_fd);
-	
-	if ((client_fd = open_clientfd()) < 0) {
-		printf("Unable to connect to server\n");
-		return -1;
-	}
-	send(client_fd, "--search", 8, 0);
-	send(client_fd, "hello", 5, 0);
-	read(client_fd, buffer, 10);
-	printf("Client rec : %s\n", buffer);
-	close(client_fd);
-
 	return 0;
 }

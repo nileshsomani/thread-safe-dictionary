@@ -1,5 +1,6 @@
 #include<pthread.h>
 
+#define WORD_MAX 50
 #define NO_OF_CHARS 26
 #define FAILURE 0
 #define SUCCESS 1
