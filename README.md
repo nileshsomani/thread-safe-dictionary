@@ -3,9 +3,9 @@ This project contains a dictionary service application that stores words in memo
 
 To interact with the dictionary service, use the dictionary client command line utility.
 
-#Design
+# Design
 
-#Build and Usage
+# Build and Usage
 To build the dictionary service and client, execute the following command:
 
 > make
@@ -24,9 +24,9 @@ This is the command line interface to interact with the dictionary
 - search: Search word in the dictionary
 - delete: Delete word from the dictionary
 
-#References
+# References
 - Computer Systems - A Programmers Perspective(2nd Edition)
 
-#Enhancements
+# Enhancements
 - Currently, dictionary service uses a global lock. This can be optimized more on granular level by using locking at node level.
 - TRIE data structure can be further optimized by using converting it to compressed TRIE where long chains of single child edges are converted to single edge.
