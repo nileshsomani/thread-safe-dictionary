@@ -3,6 +3,7 @@
 
 #include "ipc_socket.h"
 
+// Maximum word size in dictionary
 #define WORD_MAX 50
 
 int main(int argc, char *argv[]) {
@@ -22,10 +23,13 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
+	// Create client connection with dictionary service
 	if ((client_fd = open_clientfd()) < 0) {
 		printf("Unable to connect to server\n");
 		return -1;
 	}
+
+	// Send aruguments over socket connection
 	if (strcmp(argv[1], "--search") == 0 || strcmp(argv[1], "--insert") == 0 || strcmp(argv[1], "--delete") == 0) {
 		send(client_fd, argv[1], 8, 0);
 		send(client_fd, argv[2], word_len, 0);
