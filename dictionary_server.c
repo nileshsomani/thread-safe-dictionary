@@ -53,7 +53,7 @@ static int insert(char *word) {
 				// release locks
 				pthread_mutex_unlock(&cur_size_mutex);
 				pthread_mutex_unlock(&trie_mutex);
-				return FAILURE;
+				return NOMEM;
 
 			}
 		}
@@ -125,7 +125,7 @@ static int del(char *word) {
 		else {
 			// word does not exist to delete
 			pthread_mutex_unlock(&trie_mutex);
-			return SUCCESS;
+			return NEXISTS;
 		}
 	}
 	// Soft Delete
@@ -135,7 +135,7 @@ static int del(char *word) {
 
 	// if last node has no children, spawn a thread for
 	// recursive delete of nodes
-	if (has_children(iter) == 0) {
+	if (has_children(iter) == FAILURE) {
 		tmp = (char *)malloc(sizeof(char) * strlen(word));
 		strncpy(tmp, word, strlen(word));
 		pthread_create(&tid, NULL, del_thread, (void *)tmp);
@@ -153,10 +153,10 @@ static int has_children(struct Node *trie) {
 
 	for (i=0; i<NO_OF_CHARS; i++) {
 		if (trie->children[i] != NULL)
-			return 1;
+			return SUCCESS;
 	}
 
-	return 0;
+	return FAILURE;
 }
 
 /*
@@ -274,8 +274,12 @@ static void *thread(void *arg) {
 	}
 	if (res == SUCCESS)
 		send(conn_fd, "SUCCESS", 7, 0);
-	else
+	else if (res == FAILURE)
 		send(conn_fd, "FAILURE", 7, 0);
+	else if (res == NEXISTS)
+		send(conn_fd, "DOES NOT EXISTS", 15, 0);
+	else if (res == NOMEM)
+		send(conn_fd, "MEMORY IS FULL", 14, 0);
 
 	close(conn_fd);
 	return NULL;

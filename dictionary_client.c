@@ -8,7 +8,7 @@
 
 int main(int argc, char *argv[]) {
 	int client_fd, word_len;
-	char result[10] = {0};
+	char result[50] = {0};
 
 	if (argc < 3) {
 		printf("Invalid Arguments\n");
@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
 	if (strcmp(argv[1], "--search") == 0 || strcmp(argv[1], "--insert") == 0 || strcmp(argv[1], "--delete") == 0) {
 		send(client_fd, argv[1], 8, 0);
 		send(client_fd, argv[2], word_len, 0);
-		read(client_fd, result, 10);
+		read(client_fd, result, 50);
 		printf("Action[%s] for Word[%s] : %s\n", (argv[1] + 2), argv[2], result);
 
 	}

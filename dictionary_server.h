@@ -7,7 +7,8 @@
 
 #define FAILURE 0
 #define SUCCESS 1
-
+#define NEXISTS 2
+#define NOMEM 3
 #define INDEX(c) ((c) < 'Z'? c-'A':c-'a')
 
 // Maximum number of nodes to restrict memory foot print to 1M
